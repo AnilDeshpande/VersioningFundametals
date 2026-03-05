@@ -15,8 +15,8 @@ android {
         applicationId = "com.codetutor.versioningfundametals"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -29,6 +29,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug {
+            // Ensure BuildConfig is generated for debug builds
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -36,6 +39,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
