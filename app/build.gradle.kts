@@ -4,6 +4,13 @@ val versionProps = Properties().apply {
     load(rootProject.file("version.properties").inputStream())
 }
 
+val major = versionProps["MAJOR"].toString().toInt()
+val minor = versionProps["MINOR"].toString().toInt()
+val patch = versionProps["PATCH"].toString().toInt()
+
+val computedVersionCode = major * 10000 + minor * 100 + patch
+val computedVersionName = "$major.$minor.$patch"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -21,8 +28,8 @@ android {
         applicationId = "com.codetutor.versioningfundametals"
         minSdk = 24
         targetSdk = 36
-        versionCode = versionProps["VERSION_CODE"].toString().toInt()
-        versionName = versionProps["VERSION_NAME"].toString()
+        versionCode = computedVersionCode
+        versionName = computedVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
