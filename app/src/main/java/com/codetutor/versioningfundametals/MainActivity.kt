@@ -40,12 +40,17 @@ fun VersionInfo(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Version Name: ${BuildConfig.VERSION_NAME}",
+            text = "VERSION_NAME: ${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(bottom = 8.dp)
         )
         Text(
-            text = "Version Code: ${BuildConfig.VERSION_CODE}",
+            text = "VERSION_CODE: ${BuildConfig.VERSION_CODE}",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Text(
+            text = "BUILD_TYPE: ${BuildConfig.BUILD_TYPE}",
             style = MaterialTheme.typography.headlineSmall
         )
     }
