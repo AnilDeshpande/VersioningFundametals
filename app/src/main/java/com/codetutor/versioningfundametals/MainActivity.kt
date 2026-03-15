@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
             VersioningFundametalsTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Greeting(
-                        name = "Android",
+                        name = "Android ",
                         modifier = Modifier.padding(innerPadding)
                     )
                     VersionInfo(modifier = Modifier.padding(innerPadding))
