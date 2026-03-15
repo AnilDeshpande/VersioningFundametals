@@ -8,8 +8,43 @@ val major = versionProps["MAJOR"].toString().trim().toInt()
 val minor = versionProps["MINOR"].toString().trim().toInt()
 val patch = versionProps["PATCH"].toString().trim().toInt()
 
-val computedVersionName = "$major.$minor.$patch"
-val computedVersionCode = major * 10000 + minor * 100 + patch
+val fallBackVersionName = "$major.$minor.$patch"
+val fallBackVersionCode = major * 10000 + minor * 100 + patch
+
+fun git(vararg args: String): String? = try {
+    val process = ProcessBuilder("git", *args)
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().use { it.readText().trim() }
+    if (process.waitFor() == 0) output.takeIf { it.isNotBlank() } else null
+}catch (_: Exception){
+    null
+}
+
+fun semVerToVersionCode(version: String): Int? {
+    val match = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(version) ?: return null
+    val (major, minor, patch) = match.destructured
+    return major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
+}
+
+val latestTag = git("describe", "--tags", "--abbrev=0")
+val sha = git("rev-parse", "--short", "HEAD") ?: "nogit"
+val commitsSinceTag = latestTag?.let { tag ->
+    git("rev-list", "$tag..HEAD", "--count")?.toIntOrNull() ?: 0
+} ?: 0
+
+val baseTagVersion = latestTag?.removePrefix("v")
+val baseVersionName = baseTagVersion ?: fallBackVersionName
+val baseVersionCode = baseTagVersion?.let(::semVerToVersionCode) ?: fallBackVersionCode
+
+val versionNameFromGit = when {
+    latestTag == null -> "$fallBackVersionName+local.$sha"
+    commitsSinceTag == 0 -> baseVersionName
+    else -> "$baseVersionName+$commitsSinceTag.$sha"
+}
+
+val versionCodeFromGit = baseVersionCode+commitsSinceTag
 
 
 
@@ -31,8 +66,8 @@ android {
         applicationId = "com.codetutor.versioningfundametals"
         minSdk = 24
         targetSdk = 36
-        versionCode = computedVersionCode
-        versionName = computedVersionName
+        versionCode = versionCodeFromGit
+        versionName = versionNameFromGit
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
