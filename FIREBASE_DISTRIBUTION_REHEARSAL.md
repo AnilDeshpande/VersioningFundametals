@@ -63,3 +63,26 @@ tester_group=android-testers
 - The GitHub artifact should preserve the same APK sent to Firebase.
 - Firebase CLI should authenticate through `GOOGLE_APPLICATION_CREDENTIALS`, not `FIREBASE_TOKEN`.
 - Firebase App Distribution should return release/tester links after upload.
+
+## Branch CI Result
+
+First pushed run:
+
+```text
+Run ID: 26965135599
+Branch: codex/firebase-distribution-rehearsal
+Result: Failed at Validate release and Firebase secrets
+```
+
+This is the expected first failure before the GitHub `production` environment is configured.
+
+Missing environment secrets:
+
+- `FIREBASE_ANDROID_APP_ID`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `RELEASE_KEYSTORE_BASE64`
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+
+Do not copy the workflow to `main` for manual dispatch until the branch run succeeds with real environment secrets.
