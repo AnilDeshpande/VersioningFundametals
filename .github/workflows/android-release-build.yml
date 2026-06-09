@@ -1,0 +1,150 @@
+name: Android Release Build
+
+on:
+  push:
+    branches:
+      - codex/firebase-distribution-rehearsal
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: Branch, tag, or SHA to build
+        required: true
+        default: codex/firebase-distribution-rehearsal
+      tester_group:
+        description: Firebase App Distribution tester group alias
+        required: true
+        default: android-testers
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and distribute release APK
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+      FIREBASE_TESTER_GROUP: ${{ github.event.inputs.tester_group || 'android-testers' }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+
+    steps:
+      - name: Checkout app source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.checkout_ref || github.ref_name }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate release and Firebase secrets
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          missing=0
+          for name in \
+            FIREBASE_ANDROID_APP_ID \
+            FIREBASE_SERVICE_ACCOUNT_JSON \
+            RELEASE_KEYSTORE_BASE64 \
+            RELEASE_STORE_PASSWORD \
+            RELEASE_KEY_ALIAS \
+            RELEASE_KEY_PASSWORD
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required production environment secret: $name"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Prepare release signing and Firebase credentials
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+
+          echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
+        shell: bash
+        run: ./gradlew :app:assembleRelease
+
+      - name: Resolve release APK from metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata_path = Path("app/build/outputs/apk/release/output-metadata.json")
+          data = json.loads(metadata_path.read_text())
+          element = data["elements"][0]
+          apk_path = metadata_path.parent / element["outputFile"]
+
+          if not apk_path.exists():
+              raise SystemExit(f"APK not found: {apk_path}")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"APK_PATH={apk_path}\n")
+              env_file.write(f"VERSION_CODE={element.get('versionCode', 'unknown')}\n")
+              env_file.write(f"VERSION_NAME={element.get('versionName', 'unknown')}\n")
+
+          print(f"Resolved APK: {apk_path}")
+          print(f"Version: {element.get('versionName', 'unknown')} ({element.get('versionCode', 'unknown')})")
+          PY
+
+      - name: Verify signed APK
+        shell: bash
+        run: |
+          if [[ "$APK_PATH" == *unsigned* ]]; then
+            echo "::error::Resolved APK is still unsigned: $APK_PATH"
+            exit 1
+          fi
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found in ANDROID_HOME build tools"
+            exit 1
+          fi
+
+          "$APKSIGNER" verify --verbose "$APK_PATH"
+
+      - name: Upload signed release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: versioningfundamentals-release-apk
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Distribute APK to Firebase App Distribution
+        shell: bash
+        run: |
+          RELEASE_NOTES="Version $VERSION_NAME ($VERSION_CODE) from ${GITHUB_SHA::7}"
+          firebase appdistribution:distribute "$APK_PATH" \
+            --app "$FIREBASE_ANDROID_APP_ID" \
+            --groups "$FIREBASE_TESTER_GROUP" \
+            --release-notes "$RELEASE_NOTES"

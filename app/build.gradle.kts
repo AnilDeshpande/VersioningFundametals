@@ -1,3 +1,4 @@
+import org.gradle.api.GradleException
 import java.util.Properties
 
 val versionProps = Properties().apply {
@@ -46,6 +47,23 @@ val versionNameFromGit = when {
 
 val versionCodeFromGit = baseVersionCode+commitsSinceTag
 
+val releaseStoreFilePath = System.getenv("RELEASE_STORE_FILE")?.takeIf { it.isNotBlank() }
+val releaseStorePassword = System.getenv("RELEASE_STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+
+val releaseSigningInputs = mapOf(
+    "RELEASE_STORE_FILE" to releaseStoreFilePath,
+    "RELEASE_STORE_PASSWORD" to releaseStorePassword,
+    "RELEASE_KEY_ALIAS" to releaseKeyAlias,
+    "RELEASE_KEY_PASSWORD" to releaseKeyPassword
+)
+val missingReleaseSigningInputs = releaseSigningInputs
+    .filterValues { it.isNullOrBlank() }
+    .keys
+val hasReleaseSigningInputs = missingReleaseSigningInputs.isEmpty()
+val isCiBuild = System.getenv("CI").equals("true", ignoreCase = true)
+
 
 
 
@@ -72,6 +90,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigningInputs) {
+            create("release") {
+                storeFile = file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -79,6 +108,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasReleaseSigningInputs) {
+                signingConfig = signingConfigs.getByName("release")
+            } else if (isCiBuild) {
+                throw GradleException("Release signing secrets are required in CI. Missing: ${missingReleaseSigningInputs.joinToString()}")
+            }
         }
     }
     compileOptions {
